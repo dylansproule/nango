@@ -42,12 +42,36 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
+            - name: Check Sanity credentials
+              id: sanity
+              env:
+                  SANITY_TOKEN: ${{ secrets.SANITY_TOKEN }}
+                  SANITY_PROJECT_ID: ${{ vars.SANITY_PROJECT_ID }}
+                  SANITY_DATASET: ${{ vars.SANITY_DATASET }}
+              run: |
+                  if [ -n "$SANITY_TOKEN" ] && [ -n "$SANITY_PROJECT_ID" ] && [ -n "$SANITY_DATASET" ]; then
+                      echo "configured=true" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "configured=false" >> "$GITHUB_OUTPUT"
+                      echo "Sanity credentials are not configured on this repository. Skipping sync."
+                  fi
+
+            - name: Require Sanity credentials for a manual sync
+              if: steps.sanity.outputs.configured != 'true' && github.event_name == 'workflow_dispatch'
+              run: |
+                  echo "Set SANITY_TOKEN (secret) and SANITY_PROJECT_ID and SANITY_DATASET (variables) on the selected environment."
+                  exit 1
+
             - uses: ./.github/actions/setup-node
+              if: steps.sanity.outputs.configured == 'true'
 
             - name: Install dependencies
+              if: steps.sanity.outputs.configured == 'true'
               run: npm ci
 
-            - run: npx tsx scripts/sanity-api-sync.ts
+            - name: Sync providers to Sanity
+              if: steps.sanity.outputs.configured == 'true'
+              run: npx tsx scripts/sanity-api-sync.ts
               env:
                   SANITY_TOKEN: ${{ secrets.SANITY_TOKEN }}
                   SANITY_PROJECT_ID: ${{ vars.SANITY_PROJECT_ID }}
